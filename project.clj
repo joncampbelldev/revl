@@ -1,4 +1,4 @@
-(defproject joncampbelldev/revl "2.0.3"
+(defproject joncampbelldev/revl "2.0.4"
   :description "Read/Eval/Visualise/Loop: Simple tools for visualising data at the repl"
   :url "https://github.com/joncampbelldev/revl"
   :license {:name "Eclipse Public License"

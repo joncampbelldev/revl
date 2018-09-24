@@ -3,7 +3,7 @@
 Simple tools for visualising data at the repl
 
 ```clojure
-[joncampbelldev/revl "2.0.3"]
+[joncampbelldev/revl "2.0.4"]
 ```
 
 ## Data-table
