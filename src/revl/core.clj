@@ -1,6 +1,7 @@
 (ns revl.core
   (:require [seesaw.core :as sc]
             [seesaw.table :as st]
+            [clojure.core.async :as async]
             [com.hypirion.clj-xchart :as xc])
   (:import (java.util Date UUID)
            (java.text SimpleDateFormat)
@@ -122,18 +123,27 @@
                     elide-duplicates? false}}]
    (let [{table :component} (data-table [{:timestamp (format-date (new Date)) :state @reference}])
          watch-key (str (UUID/randomUUID))
-         on-close (fn [_] (remove-watch reference watch-key))]
+         channel-for-states (async/chan 100000)]
      (add-watch reference
                 watch-key
                 (fn [_ _ old-state new-state]
                   (when-not (and elide-duplicates? (= old-state new-state))
-                    (let [row-count (st/row-count table)]
-                      (st/insert-at! table row-count {:timestamp (format-date (new Date)) :state new-state})
-                      (when (and (pos? limit) (>= row-count limit))
-                        (dotimes [i (inc (- row-count limit))]
-                          (st/remove-at! table i)))
-                      (sc/scroll! table :to :bottom)))))
-     {:component table :on-close on-close})))
+                    (async/put! channel-for-states {:timestamp (new Date) :state new-state}))))
+     (let [fut (future
+                 (loop []
+                   (when-let [{:keys [timestamp state]} (async/<!! channel-for-states)]
+                     (let [row-count (st/row-count table)]
+                       (st/insert-at! table row-count {:timestamp (format-date timestamp) :state state})
+                       (when (and (pos? limit) (>= row-count limit))
+                         (dotimes [i (inc (- row-count limit))]
+                           (st/remove-at! table i)))
+                       (sc/scroll! table :to :bottom))
+                     (recur))))]
+       {:component table
+        :on-close (fn [_]
+                    (async/close! channel-for-states)
+                    (future-cancel fut)
+                    (remove-watch reference watch-key))}))))
 
 (defn show-data-table!
   ([data] (show-data-table! data {} {}))
@@ -189,12 +199,13 @@
                       [3 "jon3" 999 888]]))
 
   (do
-    (def x (atom [1]))
+    (def x (atom 0))
     (show! (watcher x {:limit 0 :elide-duplicates? true}))
-    (swap! x conj (rand-int 100))
-    (swap! x conj (rand-int 100))
-    (swap! x conj (rand-int 100))
-    (swap! x identity))
+    (swap! x inc)
+    (dotimes [i 100]
+      (future
+        (dotimes [j 100]
+          (swap! x inc)))))
 
   (show! (data-table [(new Date) (new Date) (new Date)]))
 
